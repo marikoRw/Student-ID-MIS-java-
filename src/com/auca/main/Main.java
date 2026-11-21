@@ -36,6 +36,10 @@ public class Main {
     private static final int CANCELLED = -1;
     private static final int REGISTER_NEW = -2;
 
+    // true while the user is on a review screen of a NEW (unsaved) record.
+    // In that mode every field may be edited, and no extra confirmation is asked.
+    private static boolean reviewMode = false;
+
     // In-memory storage: one typed list per entity
     private static final List<Department> departments = new ArrayList<>();
     private static final List<Student> students = new ArrayList<>();
@@ -69,19 +73,19 @@ public class Main {
             // Safety net: a failure inside one workflow must not close the program
             try {
                 switch (choice) {
-                    case 1 -> registerDepartmentForm();
-                    case 2 -> registerStudentForm();
-                    case 3 -> registerTeacherForm();
-                    case 5 -> registerCourseForm();
-                    case 7 -> registerEnrollmentForm();
+                    case 1 -> afterSave(registerDepartmentForm(), 1);
+                    case 2 -> afterSave(registerStudentForm(), 2);
+                    case 3 -> afterSave(registerTeacherForm(), 3);
+                    case 5 -> afterSave(registerCourseForm(), 5);
+                    case 7 -> afterSave(registerEnrollmentForm(), 7);
                     case 13 -> viewAllRecords();
                     case 19 -> demonstratePolymorphism();
-                    case 4 -> registerAdministratorForm();
-                    case 6 -> registerClassroomForm();
-                    case 8 -> registerAssessmentForm();
-                    case 9 -> registerFeePaymentForm();
-                    case 10 -> registerLibraryBookForm();
-                    case 11 -> borrowBookForm();
+                    case 4 -> afterSave(registerAdministratorForm(), 4);
+                    case 6 -> afterSave(registerClassroomForm(), 6);
+                    case 8 -> afterSave(registerAssessmentForm(), 8);
+                    case 9 -> afterSave(registerFeePaymentForm(), 9);
+                    case 10 -> afterSave(registerLibraryBookForm(), 10);
+                    case 11 -> afterSave(borrowBookForm(), 11);
                     case 12 -> returnBookForm();
                     case 16 -> showStudentAcademicSummary();
                     case 17 -> showPaymentHistory();
@@ -150,8 +154,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);            // re-check right before saving
-            checkUnique("DEPTCODE", code);
+            checkUnique("ID", dept.getDepartmentId());   // re-check right before saving
+            checkUnique("DEPTCODE", dept.getDepartmentCode());
             dept.validate();
             departments.add(dept);
             System.out.println("+ Department " + dept.getId() + " registered successfully.");
@@ -232,8 +236,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", personId);
-            checkUnique("STUDENTNO", studentNumber);
+            checkUnique("ID", student.getPersonId());
+            checkUnique("STUDENTNO", student.getStudentNumber());
             student.validate();
             students.add(student);
             System.out.println("+ Student " + student.getStudentNumber() + " registered successfully.");
@@ -313,8 +317,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", personId);
-            checkUnique("EMPLOYEENO", employeeNumber);
+            checkUnique("ID", teacher.getPersonId());
+            checkUnique("EMPLOYEENO", teacher.getEmployeeNumber());
             teacher.validate();
             teachers.add(teacher);
             System.out.println("+ Teacher " + teacher.getEmployeeNumber() + " registered successfully.");
@@ -369,8 +373,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
-            checkUnique("COURSECODE", code);
+            checkUnique("ID", course.getCourseId());
+            checkUnique("COURSECODE", course.getCourseCode());
             course.validate();
             courses.add(course);
             System.out.println("+ Course " + course.getCourseCode() + " registered successfully.");
@@ -424,9 +428,10 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
+            checkUnique("ID", enrollment.getEnrollmentId());
             if (enrollment.isActive()) {
-                checkEnrollmentNotDuplicate(student, course, semester, null);
+                checkEnrollmentNotDuplicate(enrollment.getStudent(), enrollment.getCourse(),
+                        enrollment.getSemester(), null);
             }
             enrollment.validate();
             enrollments.add(enrollment);
@@ -493,8 +498,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", personId);
-            checkUnique("STAFFNO", staffNumber);
+            checkUnique("ID", admin.getPersonId());
+            checkUnique("STAFFNO", admin.getStaffNumber());
             admin.validate();
             administrators.add(admin);
             System.out.println("+ Administrator " + admin.getStaffNumber() + " registered successfully.");
@@ -534,7 +539,7 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
+            checkUnique("ID", classroom.getClassroomId());
             classroom.validate();
             classrooms.add(classroom);
             System.out.println("+ Classroom " + classroom.getId() + " registered successfully.");
@@ -575,8 +580,8 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
-            checkUnique("ISBN", isbn);
+            checkUnique("ID", book.getBookId());
+            checkUnique("ISBN", book.getIsbn());
             book.validate();
             books.add(book);
             System.out.println("+ Book " + book.getId() + " registered successfully.");
@@ -622,7 +627,7 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
+            checkUnique("ID", assessment.getAssessmentId());
             assessment.validate();   // also rejects a non-ACTIVE enrollment
             assessments.add(assessment);
             System.out.println("+ Assessment " + assessment.getId() + " recorded successfully.");
@@ -668,11 +673,11 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
-            checkUnique("RECEIPT", receipt);
+            checkUnique("ID", payment.getPaymentId());
+            checkUnique("RECEIPT", payment.getReceiptNumber());
             payment.validate();
             payments.add(payment);
-            System.out.println("+ Payment " + payment.getId() + " recorded. Receipt: " + receipt);
+            System.out.println("+ Payment " + payment.getId() + " recorded. Receipt: " + payment.getReceiptNumber());
             return payment;
         } catch (ValidationException | DuplicateRecordException e) {
             System.out.println("! Could not save: " + e.getMessage());
@@ -730,13 +735,14 @@ public class Main {
         }
 
         try {
-            checkUnique("ID", id);
-            checkBookAvailable(book);   // check again right before changing stock
+            checkUnique("ID", loan.getLoanId());
+            checkBookAvailable(loan.getBook());   // check again right before changing stock
             loan.validate();
             loans.add(loan);
-            book.setAvailableCopies(book.getAvailableCopies() - 1);   // exactly once
+            LibraryBook loanedBook = loan.getBook();
+            loanedBook.setAvailableCopies(loanedBook.getAvailableCopies() - 1);   // exactly once
             System.out.println("+ Loan " + loan.getId() + " created. Copies left for \""
-                    + book.getTitle() + "\": " + book.getAvailableCopies());
+                    + loanedBook.getTitle() + "\": " + loanedBook.getAvailableCopies());
             return loan;
         } catch (ValidationException | DuplicateRecordException | BookUnavailableException e) {
             System.out.println("! Could not save: " + e.getMessage());
@@ -1229,18 +1235,101 @@ public class Main {
     // =====================================================
     // REVIEW SCREEN
     // =====================================================
-    private static boolean confirmSave(String title, Registrable record) {
-        System.out.println("\n+---------------- " + title + " ----------------+");
-        System.out.println(record.getRegistrationSummary());
-        System.out.println("+------------------------------------------------------------+");
+    // Full review screen: every field is listed with its number.
+    // [1] Save   [2] Edit field   [0] Cancel
+    // Editing re-uses the same field editors as menu option 15 (Update).
+    private static boolean confirmSave(String title, Identifiable record) {
+        boolean previousMode = reviewMode;   // nested forms must not switch the mode off for us
+        reviewMode = true;
+        try {
+            while (true) {
+                List<String> lines = describeRecord(record);
+                System.out.println("\n+---------------- " + title + " ----------------+");
+                for (int i = 0; i < lines.size(); i++) {
+                    String header = sectionHeaderBefore(record, i);
+                    if (header != null) {
+                        System.out.println("| " + header);
+                    }
+                    System.out.println(String.format("|  %02d %s", i + 1, lines.get(i)));
+                }
+                System.out.println("+------------------------------------------------------------+");
+                System.out.println("| [1] Save   [2] Edit field   [0] Cancel");
+                System.out.println("+------------------------------------------------------------+");
+                System.out.print("Select option: ");
 
+                String input = scanner.nextLine().trim();
+                if (input.equals("1")) {
+                    return true;
+                } else if (input.equals("0") || input.equalsIgnoreCase("CANCEL")) {
+                    return false;
+                } else if (input.equals("2")) {
+                    int number = promptIntRange("Field number to edit [1-" + lines.size() + "] : ", 1, lines.size());
+                    if (number != CANCELLED) {
+                        System.out.println("Current value -> " + lines.get(number - 1));
+                        boolean changed = editRecordField(record, number);
+                        System.out.println(changed ? "+ Field " + number + " updated. Back to review."
+                                                   : "No change made. Back to review.");
+                    }
+                } else {
+                    System.out.println("! Enter 1 to save, 2 to edit a field, or 0 to cancel.");
+                }
+            }
+        } finally {
+            reviewMode = previousMode;
+        }
+    }
+
+    // Group titles shown inside the review box (PERSON / ACADEMIC MEMBER / ...)
+    private static String sectionHeaderBefore(Identifiable r, int index) {
+        if (r instanceof Student || r instanceof Teacher) {
+            if (index == 0) return "PERSON";
+            if (index == 6) return "ACADEMIC MEMBER";
+            if (index == 12) return (r instanceof Student) ? "STUDENT" : "TEACHER";
+        }
+        if (r instanceof Administrator) {
+            if (index == 0) return "PERSON";
+            if (index == 6) return "ADMINISTRATOR";
+        }
+        return null;
+    }
+
+    // Shown after a successful save from the main menu (Section 17.3)
+    private static void afterSave(Identifiable saved, int menuOption) {
+        if (saved == null) {
+            return;   // cancelled or failed: back to the main menu
+        }
         while (true) {
-            System.out.println("[1] Save   [0] Cancel");
+            System.out.println("\n[1] Add another   [2] View this record   [0] Main menu");
             System.out.print("Select option: ");
             String input = scanner.nextLine().trim();
-            if (input.equals("1")) return true;
-            if (input.equals("0") || input.equalsIgnoreCase("CANCEL")) return false;
-            System.out.println("! Enter 1 to save or 0 to cancel.");
+            if (input.equals("1")) {
+                addAnother(menuOption);
+                return;
+            } else if (input.equals("2")) {
+                System.out.println("\n+ " + recordTypeName(saved) + ":");
+                printFullRecord(saved);
+            } else if (input.equals("0")) {
+                return;
+            } else {
+                System.out.println("! Enter 1, 2 or 0.");
+            }
+        }
+    }
+
+    private static void addAnother(int menuOption) {
+        switch (menuOption) {
+            case 1 -> afterSave(registerDepartmentForm(), 1);
+            case 2 -> afterSave(registerStudentForm(), 2);
+            case 3 -> afterSave(registerTeacherForm(), 3);
+            case 4 -> afterSave(registerAdministratorForm(), 4);
+            case 5 -> afterSave(registerCourseForm(), 5);
+            case 6 -> afterSave(registerClassroomForm(), 6);
+            case 7 -> afterSave(registerEnrollmentForm(), 7);
+            case 8 -> afterSave(registerAssessmentForm(), 8);
+            case 9 -> afterSave(registerFeePaymentForm(), 9);
+            case 10 -> afterSave(registerLibraryBookForm(), 10);
+            case 11 -> afterSave(borrowBookForm(), 11);
+            default -> System.out.println("! Nothing to repeat.");
         }
     }
 
@@ -1358,6 +1447,9 @@ public class Main {
     }
 
     private static boolean changeConfirmed(String label, Object oldValue, Object newValue) {
+        if (reviewMode) {
+            return true;   // on the review screen of a new record, no extra question
+        }
         return confirmAction("Change " + label + ":  " + oldValue + "  ->  " + newValue);
     }
 
@@ -1984,7 +2076,28 @@ public class Main {
                     return true;
                 }
             }
-            case 2, 3 -> printLocked("the student and course are fixed once enrolled (drop and re-enroll instead).");
+            case 2 -> {
+                if (!reviewMode) {
+                    printLocked("the student is fixed once enrolled (drop and re-enroll instead).");
+                } else {
+                    Student v = selectOrCreateStudent();
+                    if (v != null) {
+                        en.setStudent(v);
+                        return true;
+                    }
+                }
+            }
+            case 3 -> {
+                if (!reviewMode) {
+                    printLocked("the course is fixed once enrolled (drop and re-enroll instead).");
+                } else {
+                    Course v = selectOrCreateCourse();
+                    if (v != null) {
+                        en.setCourse(v);
+                        return true;
+                    }
+                }
+            }
             case 4 -> {
                 LocalDate v = promptDate("New enrollment date (current: " + en.getEnrollmentDate() + ") [YYYY-MM-DD] : ", false);
                 if (v != null && changeConfirmed("Enrollment date", en.getEnrollmentDate(), v)) {
@@ -2039,7 +2152,17 @@ public class Main {
                     return true;
                 }
             }
-            case 2 -> printLocked("an assessment stays linked to the enrollment it was recorded for.");
+            case 2 -> {
+                if (!reviewMode) {
+                    printLocked("an assessment stays linked to the enrollment it was recorded for.");
+                } else {
+                    Enrollment v = selectOrCreateActiveEnrollment();
+                    if (v != null) {
+                        a.setEnrollment(v);
+                        return true;
+                    }
+                }
+            }
             case 3 -> {
                 String v = promptChoice("New assessment type (current: " + a.getAssessmentType() + "):",
                         "QUIZ", "ASSIGNMENT", "MIDTERM", "FINAL");
@@ -2087,7 +2210,17 @@ public class Main {
                     return true;
                 }
             }
-            case 2 -> printLocked("a payment stays linked to the student who paid.");
+            case 2 -> {
+                if (!reviewMode) {
+                    printLocked("a payment stays linked to the student who paid.");
+                } else {
+                    Student v = selectOrCreateStudent();
+                    if (v != null) {
+                        p.setStudent(v);
+                        return true;
+                    }
+                }
+            }
             case 3 -> {
                 BigDecimal v = promptMoney("New amount (current: " + p.getAmount() + ") [greater than 0] : ");
                 if (v != null && changeConfirmed("Amount", p.getAmount(), v)) {
@@ -2163,7 +2296,18 @@ public class Main {
                     return true;
                 }
             }
-            case 6 -> printLocked("available copies change only through Borrow and Return.");
+            case 6 -> {
+                if (!reviewMode) {
+                    printLocked("available copies change only through Borrow and Return.");
+                } else {
+                    int v = promptIntRange("New available copies (current: " + b.getAvailableCopies()
+                            + ") [0-" + b.getTotalCopies() + "] : ", 0, b.getTotalCopies());
+                    if (v != CANCELLED) {
+                        b.setAvailableCopies(v);
+                        return true;
+                    }
+                }
+            }
             default -> System.out.println("! Invalid field number.");
         }
         return false;
@@ -2178,7 +2322,48 @@ public class Main {
                     return true;
                 }
             }
-            case 2, 3, 4 -> printLocked("the student, book and borrowed date are fixed for a loan.");
+            case 2 -> {
+                if (!reviewMode) {
+                    printLocked("the student is fixed for a loan.");
+                } else {
+                    Student v = selectOrCreateStudent();
+                    if (v != null) {
+                        loan.setStudent(v);
+                        return true;
+                    }
+                }
+            }
+            case 3 -> {
+                if (!reviewMode) {
+                    printLocked("the book is fixed for a loan.");
+                } else {
+                    LibraryBook v = selectOrCreateBook();
+                    if (v == null) return false;
+                    try {
+                        checkBookAvailable(v);
+                    } catch (BookUnavailableException ex) {
+                        System.out.println("! " + ex.getMessage());
+                        return false;
+                    }
+                    loan.setBook(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                if (!reviewMode) {
+                    printLocked("the borrowed date is fixed for a loan.");
+                } else {
+                    LocalDate v = promptDate("New borrowed date (current: " + loan.getBorrowedDate() + ") [YYYY-MM-DD] : ", false);
+                    if (v == null) return false;
+                    if (!loan.getDueDate().isAfter(v)) {
+                        System.out.println("! The borrowed date must be before the due date ("
+                                + loan.getDueDate() + "). Edit the due date first.");
+                        return false;
+                    }
+                    loan.setBorrowedDate(v);
+                    return true;
+                }
+            }
             case 5 -> {
                 LocalDate v = promptDueDate("New due date (current: " + loan.getDueDate()
                         + ") [YYYY-MM-DD | after " + loan.getBorrowedDate() + "] : ", loan.getBorrowedDate());
@@ -2187,7 +2372,9 @@ public class Main {
                     return true;
                 }
             }
-            case 6 -> printLocked("use menu option 12 (Return Library Book) so the stock stays correct.");
+            case 6 -> printLocked(reviewMode
+                    ? "the returned date stays empty until the book is returned."
+                    : "use menu option 12 (Return Library Book) so the stock stays correct.");
             default -> System.out.println("! Invalid field number.");
         }
         return false;
