@@ -1,5 +1,6 @@
 package com.auca.main;
 
+import com.auca.abstracts.AcademicMember;
 import com.auca.abstracts.Person;
 import com.auca.administrator.Administrator;
 import com.auca.assessment.Assessment;
@@ -10,6 +11,8 @@ import com.auca.department.Department;
 import com.auca.enrollment.Enrollment;
 import com.auca.exceptions.BookUnavailableException;
 import com.auca.exceptions.DuplicateRecordException;
+import com.auca.exceptions.PrerequisiteMissingException;
+import com.auca.exceptions.RecordNotFoundException;
 import com.auca.exceptions.ValidationException;
 import com.auca.feepayment.FeePayment;
 import com.auca.interfaces.Identifiable;
@@ -83,8 +86,8 @@ public class Main {
                     case 16 -> showStudentAcademicSummary();
                     case 17 -> showPaymentHistory();
                     case 18 -> showAvailableBooks();
-                    case 14, 15 ->
-                        System.out.println("This option is built in the next phase.");
+                    case 14 -> searchRecordById();
+                    case 15 -> updateRecordForm();
                     case 0 -> System.out.println("Exiting AUCA_ID. Goodbye!");
                     default -> System.out.println("! Invalid option. Choose 0-19.");
                 }
@@ -423,7 +426,7 @@ public class Main {
         try {
             checkUnique("ID", id);
             if (enrollment.isActive()) {
-                checkEnrollmentNotDuplicate(student, course, semester);
+                checkEnrollmentNotDuplicate(student, course, semester, null);
             }
             enrollment.validate();
             enrollments.add(enrollment);
@@ -1210,10 +1213,11 @@ public class Main {
         }
     }
 
-    private static void checkEnrollmentNotDuplicate(Student student, Course course, String semester)
+    private static void checkEnrollmentNotDuplicate(Student student, Course course, String semester,
+                                                    Enrollment ignore)
             throws DuplicateRecordException {
         for (Enrollment e : enrollments) {
-            if (e.isActive() && e.getStudent() == student && e.getCourse() == course
+            if (e != ignore && e.isActive() && e.getStudent() == student && e.getCourse() == course
                     && e.getSemester().equals(semester)) {
                 throw new DuplicateRecordException(student.getDisplayName()
                         + " already has an ACTIVE enrollment in " + course.getCourseCode()
@@ -1238,6 +1242,955 @@ public class Main {
             if (input.equals("0") || input.equalsIgnoreCase("CANCEL")) return false;
             System.out.println("! Enter 1 to save or 0 to cancel.");
         }
+    }
+
+    // =====================================================
+    // FINDING RECORDS (throws RecordNotFoundException)
+    // =====================================================
+    private static Identifiable findById(String id) throws RecordNotFoundException {
+        for (Identifiable record : allRecords()) {
+            if (record.getId().equalsIgnoreCase(id)) {
+                return record;
+            }
+        }
+        throw new RecordNotFoundException("No record found with ID '" + id + "'.");
+    }
+
+    private static String recordTypeName(Identifiable r) {
+        if (r instanceof Student) return "Student";
+        if (r instanceof Teacher) return "Teacher";
+        if (r instanceof Administrator) return "Administrator";
+        if (r instanceof Department) return "Department";
+        if (r instanceof Course) return "Course";
+        if (r instanceof Classroom) return "Classroom";
+        if (r instanceof Enrollment) return "Enrollment";
+        if (r instanceof Assessment) return "Assessment";
+        if (r instanceof FeePayment) return "Fee Payment";
+        if (r instanceof LibraryBook) return "Library Book";
+        if (r instanceof BookLoan) return "Book Loan";
+        return "Record";
+    }
+
+    // =====================================================
+    // SEARCH BY ID (menu option 14)
+    // =====================================================
+    private static void searchRecordById() {
+        printBanner("SEARCH RECORD BY ID");
+        String id = promptText("Enter the record ID to search for : ", 1, 30);
+        if (id == null) {
+            System.out.println("Search cancelled.");
+            return;
+        }
+        try {
+            Identifiable record = findById(id);
+            System.out.println("\n+ Found a " + recordTypeName(record) + ":");
+            printFullRecord(record);
+        } catch (RecordNotFoundException e) {
+            System.out.println("! " + e.getMessage());
+        }
+    }
+
+    private static void printFullRecord(Identifiable record) {
+        List<String> lines = describeRecord(record);
+        for (int i = 0; i < lines.size(); i++) {
+            System.out.println(String.format("  %02d %s", i + 1, lines.get(i)));
+        }
+    }
+
+    // =====================================================
+    // UPDATE (menu option 15)
+    // The record is looked up by ID, its fields are listed with numbers,
+    // and the user edits one field at a time. Every change is validated when typed
+    // and needs explicit confirmation before it is applied.
+    // =====================================================
+    private static void updateRecordForm() {
+        printBanner("UPDATE EXISTING RECORD");
+        String id = promptText("Enter the ID of the record to update : ", 1, 30);
+        if (id == null) {
+            System.out.println("Update cancelled.");
+            return;
+        }
+
+        Identifiable record;
+        try {
+            record = findById(id);
+        } catch (RecordNotFoundException e) {
+            System.out.println("! " + e.getMessage());
+            return;
+        }
+
+        while (true) {
+            List<String> lines = describeRecord(record);
+            System.out.println("\n+---------- UPDATE " + recordTypeName(record).toUpperCase() + " ----------+");
+            printFullRecord(record);
+            System.out.println("Enter a field number to edit, or 0 to finish.");
+            int number = promptIntRange("Field number [0-" + lines.size() + "] : ", 0, lines.size());
+            if (number == CANCELLED || number == 0) {
+                break;
+            }
+            boolean changed = editRecordField(record, number);
+            System.out.println(changed ? "+ Field updated." : "No change was made.");
+        }
+
+        // Final re-check of the whole record
+        try {
+            ((Registrable) record).validate();
+            System.out.println("+ Update finished. Record is valid: " + ((Registrable) record).getRegistrationSummary());
+        } catch (ValidationException e) {
+            System.out.println("! The record is not valid: " + e.getMessage());
+            System.out.println("  Use option 15 again to fix it.");
+        }
+    }
+
+    private static boolean editRecordField(Identifiable r, int n) {
+        if (r instanceof Student) return editStudentField((Student) r, n);
+        if (r instanceof Teacher) return editTeacherField((Teacher) r, n);
+        if (r instanceof Administrator) return editAdministratorField((Administrator) r, n);
+        if (r instanceof Department) return editDepartmentField((Department) r, n);
+        if (r instanceof Course) return editCourseField((Course) r, n);
+        if (r instanceof Classroom) return editClassroomField((Classroom) r, n);
+        if (r instanceof Enrollment) return editEnrollmentField((Enrollment) r, n);
+        if (r instanceof Assessment) return editAssessmentField((Assessment) r, n);
+        if (r instanceof FeePayment) return editFeePaymentField((FeePayment) r, n);
+        if (r instanceof LibraryBook) return editLibraryBookField((LibraryBook) r, n);
+        if (r instanceof BookLoan) return editBookLoanField((BookLoan) r, n);
+        return false;
+    }
+
+    private static boolean changeConfirmed(String label, Object oldValue, Object newValue) {
+        return confirmAction("Change " + label + ":  " + oldValue + "  ->  " + newValue);
+    }
+
+    private static String yesNo(boolean value) {
+        return value ? "YES" : "NO";
+    }
+
+    private static void printLocked(String why) {
+        System.out.println("! This field cannot be edited: " + why);
+    }
+
+    // =====================================================
+    // DEPARTMENT HEAD TEACHER (optional at creation, assigned later)
+    // Uses PrerequisiteMissingException when no Teacher exists yet.
+    // =====================================================
+    private static boolean assignHeadTeacher(Department dept) {
+        try {
+            if (teachers.isEmpty()) {
+                throw new PrerequisiteMissingException(
+                        "No teacher exists. Register a teacher before assigning a head teacher.");
+            }
+        } catch (PrerequisiteMissingException e) {
+            System.out.println("! " + e.getMessage());
+            System.out.println("[1] Register prerequisite now   [2] Return to menu");
+            String choice = "";
+            while (choice != null && !choice.equals("1") && !choice.equals("2")) {
+                choice = promptText("Select option [1/2] : ", 1, 1);
+                if (choice != null && !choice.equals("1") && !choice.equals("2")) {
+                    System.out.println("! Enter 1 or 2.");
+                }
+            }
+            if (choice == null || choice.equals("2")) {
+                return false;
+            }
+            if (registerTeacherForm() == null) {
+                System.out.println("No teacher was registered, so no head teacher was assigned.");
+                return false;
+            }
+            System.out.println("Teacher saved. Returning to the head teacher selection...");
+        }
+
+        int pick = pickExisting("Head Teacher", teachers);
+        if (pick == CANCELLED) return false;
+        Teacher chosen = teachers.get(pick);
+        String oldName = (dept.getHeadTeacher() == null) ? "Unassigned" : dept.getHeadTeacher().getDisplayName();
+        if (changeConfirmed("Head teacher", oldName, chosen.getDisplayName())) {
+            dept.setHeadTeacher(chosen);
+            return true;
+        }
+        return false;
+    }
+
+    // =====================================================
+    // FIELD DESCRIPTIONS (numbered in the same order as the forms)
+    // =====================================================
+    private static List<String> describeRecord(Identifiable r) {
+        if (r instanceof Student) return describeStudent((Student) r);
+        if (r instanceof Teacher) return describeTeacher((Teacher) r);
+        if (r instanceof Administrator) return describeAdministrator((Administrator) r);
+        if (r instanceof Department) return describeDepartment((Department) r);
+        if (r instanceof Course) return describeCourse((Course) r);
+        if (r instanceof Classroom) return describeClassroom((Classroom) r);
+        if (r instanceof Enrollment) return describeEnrollment((Enrollment) r);
+        if (r instanceof Assessment) return describeAssessment((Assessment) r);
+        if (r instanceof FeePayment) return describeFeePayment((FeePayment) r);
+        if (r instanceof LibraryBook) return describeLibraryBook((LibraryBook) r);
+        if (r instanceof BookLoan) return describeBookLoan((BookLoan) r);
+        return new ArrayList<>();
+    }
+
+    private static List<String> personLines(Person p) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Person ID          : " + p.getPersonId());
+        lines.add("First name         : " + p.getFirstName());
+        lines.add("Last name          : " + p.getLastName());
+        lines.add("Email              : " + p.getEmail());
+        lines.add("Phone              : " + p.getPhoneNumber());
+        lines.add("Date of birth      : " + p.getDateOfBirth());
+        return lines;
+    }
+
+    private static List<String> academicLines(AcademicMember m) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Member number      : " + m.getMemberNumber());
+        lines.add("Department         : " + m.getDepartment().getDisplayName());
+        lines.add("Join date          : " + m.getJoinDate());
+        lines.add("Academic status    : " + m.getAcademicStatus());
+        lines.add("Institutional email: " + m.getInstitutionalEmail());
+        lines.add("Advisor name       : " + m.getAdvisorName());
+        return lines;
+    }
+
+    private static List<String> describeStudent(Student s) {
+        List<String> lines = personLines(s);
+        lines.addAll(academicLines(s));
+        lines.add("Student number     : " + s.getStudentNumber());
+        lines.add("Program name       : " + s.getProgramName());
+        lines.add("Admission date     : " + s.getAdmissionDate());
+        lines.add("Study year         : " + s.getStudyYear());
+        lines.add("Guardian phone     : " + s.getGuardianPhone());
+        lines.add("Scholarship        : " + yesNo(s.isScholarshipStatus()));
+        return lines;
+    }
+
+    private static List<String> describeTeacher(Teacher t) {
+        List<String> lines = personLines(t);
+        lines.addAll(academicLines(t));
+        lines.add("Employee number    : " + t.getEmployeeNumber());
+        lines.add("Specialization     : " + t.getSpecialization());
+        lines.add("Hire date          : " + t.getHireDate());
+        lines.add("Salary             : " + t.getSalary());
+        lines.add("Office number      : " + t.getOfficeNumber());
+        lines.add("Employment type    : " + t.getEmploymentType());
+        return lines;
+    }
+
+    private static List<String> describeAdministrator(Administrator a) {
+        List<String> lines = personLines(a);
+        lines.add("Staff number       : " + a.getStaffNumber());
+        lines.add("Job title          : " + a.getJobTitle());
+        lines.add("Assigned office    : " + a.getAssignedOffice());
+        lines.add("Employment date    : " + a.getEmploymentDate());
+        lines.add("Access level       : " + a.getAccessLevel());
+        lines.add("Active             : " + yesNo(a.isActive()));
+        return lines;
+    }
+
+    private static List<String> describeDepartment(Department d) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Department ID      : " + d.getDepartmentId());
+        lines.add("Department name    : " + d.getDepartmentName());
+        lines.add("Department code    : " + d.getDepartmentCode());
+        lines.add("Office location    : " + d.getOfficeLocation());
+        lines.add("Contact email      : " + d.getContactEmail());
+        lines.add("Head teacher       : "
+                + (d.getHeadTeacher() == null ? "Unassigned" : d.getHeadTeacher().getDisplayName()));
+        return lines;
+    }
+
+    private static List<String> describeCourse(Course c) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Course ID          : " + c.getCourseId());
+        lines.add("Course code        : " + c.getCourseCode());
+        lines.add("Course title       : " + c.getCourseTitle());
+        lines.add("Credit hours       : " + c.getCreditHours());
+        lines.add("Department         : " + c.getDepartment().getDisplayName());
+        lines.add("Assigned teacher   : " + c.getAssignedTeacher().getDisplayName());
+        return lines;
+    }
+
+    private static List<String> describeClassroom(Classroom c) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Classroom ID       : " + c.getClassroomId());
+        lines.add("Building name      : " + c.getBuildingName());
+        lines.add("Room number        : " + c.getRoomNumber());
+        lines.add("Capacity           : " + c.getCapacity());
+        lines.add("Floor number       : " + c.getFloorNumber());
+        lines.add("Available          : " + yesNo(c.isAvailable()));
+        return lines;
+    }
+
+    private static List<String> describeEnrollment(Enrollment e) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Enrollment ID      : " + e.getEnrollmentId());
+        lines.add("Student            : " + e.getStudent().getDisplayName());
+        lines.add("Course             : " + e.getCourse().getDisplayName());
+        lines.add("Enrollment date    : " + e.getEnrollmentDate());
+        lines.add("Semester           : " + e.getSemester());
+        lines.add("Enrollment status  : " + e.getEnrollmentStatus());
+        return lines;
+    }
+
+    private static List<String> describeAssessment(Assessment a) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Assessment ID      : " + a.getAssessmentId());
+        lines.add("Enrollment         : " + a.getEnrollment().getDisplayName());
+        lines.add("Assessment type    : " + a.getAssessmentType());
+        lines.add("Maximum score      : " + a.getMaximumScore());
+        lines.add("Obtained score     : " + a.getObtainedScore());
+        lines.add("Assessment date    : " + a.getAssessmentDate());
+        return lines;
+    }
+
+    private static List<String> describeFeePayment(FeePayment p) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Payment ID         : " + p.getPaymentId());
+        lines.add("Student            : " + p.getStudent().getDisplayName());
+        lines.add("Amount             : " + p.getAmount());
+        lines.add("Payment date       : " + p.getPaymentDate());
+        lines.add("Payment method     : " + p.getPaymentMethod());
+        lines.add("Receipt number     : " + p.getReceiptNumber());
+        return lines;
+    }
+
+    private static List<String> describeLibraryBook(LibraryBook b) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Book ID            : " + b.getBookId());
+        lines.add("ISBN               : " + b.getIsbn());
+        lines.add("Title              : " + b.getTitle());
+        lines.add("Author             : " + b.getAuthor());
+        lines.add("Total copies       : " + b.getTotalCopies());
+        lines.add("Available copies   : " + b.getAvailableCopies());
+        return lines;
+    }
+
+    private static List<String> describeBookLoan(BookLoan l) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Loan ID            : " + l.getLoanId());
+        lines.add("Student            : " + l.getStudent().getDisplayName());
+        lines.add("Book               : " + l.getBook().getDisplayName());
+        lines.add("Borrowed date      : " + l.getBorrowedDate());
+        lines.add("Due date           : " + l.getDueDate());
+        lines.add("Returned date      : "
+                + (l.getReturnedDate() == null ? "(not returned)" : l.getReturnedDate().toString()));
+        return lines;
+    }
+
+    // =====================================================
+    // FIELD EDITORS
+    // Each editor: shows the current value in the prompt, validates the new value,
+    // asks for confirmation, then calls the setter. Returns true only if something changed.
+    // Fields that link to other records, or that are managed by another workflow, are locked.
+    // =====================================================
+    private static boolean editPersonField(Person p, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New person ID (current: " + p.getPersonId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Person ID", p.getPersonId(), v)) {
+                    p.setPersonId(v);
+                    return true;
+                }
+            }
+            case 2 -> {
+                String v = promptText("New first name (current: " + p.getFirstName() + ") [2-60 chars] : ", 2, 60);
+                if (v != null && changeConfirmed("First name", p.getFirstName(), v)) {
+                    p.setFirstName(v);
+                    return true;
+                }
+            }
+            case 3 -> {
+                String v = promptText("New last name (current: " + p.getLastName() + ") [2-60 chars] : ", 2, 60);
+                if (v != null && changeConfirmed("Last name", p.getLastName(), v)) {
+                    p.setLastName(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                String v = promptUniqueEmail("New email (current: " + p.getEmail() + ") : ", "EMAIL");
+                if (v != null && changeConfirmed("Email", p.getEmail(), v)) {
+                    p.setEmail(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                String v = promptPhone("New phone (current: " + p.getPhoneNumber() + ") [10-15 digits] : ");
+                if (v != null && changeConfirmed("Phone", p.getPhoneNumber(), v)) {
+                    p.setPhoneNumber(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                LocalDate v = promptDate("New date of birth (current: " + p.getDateOfBirth() + ") [YYYY-MM-DD] : ", true);
+                if (v != null && changeConfirmed("Date of birth", p.getDateOfBirth(), v)) {
+                    p.setDateOfBirth(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editAcademicField(AcademicMember m, int n) {
+        switch (n) {
+            case 7 -> {
+                String v = promptUnique("New member number (current: " + m.getMemberNumber() + ") [4-30] : ", 4, 30, "MEMBER");
+                if (v != null && changeConfirmed("Member number", m.getMemberNumber(), v)) {
+                    m.setMemberNumber(v);
+                    return true;
+                }
+            }
+            case 8 -> {
+                Department v = selectOrCreateDepartment();
+                if (v != null && changeConfirmed("Department", m.getDepartment().getDisplayName(), v.getDisplayName())) {
+                    m.setDepartment(v);
+                    return true;
+                }
+            }
+            case 9 -> {
+                LocalDate v = promptDate("New join date (current: " + m.getJoinDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Join date", m.getJoinDate(), v)) {
+                    m.setJoinDate(v);
+                    return true;
+                }
+            }
+            case 10 -> {
+                String v = promptChoice("New academic status (current: " + m.getAcademicStatus() + "):", "ACTIVE", "INACTIVE");
+                if (v != null && changeConfirmed("Academic status", m.getAcademicStatus(), v)) {
+                    m.setAcademicStatus(v);
+                    return true;
+                }
+            }
+            case 11 -> {
+                String v = promptUniqueEmail("New institutional email (current: " + m.getInstitutionalEmail() + ") : ", "INSTEMAIL");
+                if (v != null && changeConfirmed("Institutional email", m.getInstitutionalEmail(), v)) {
+                    m.setInstitutionalEmail(v);
+                    return true;
+                }
+            }
+            case 12 -> {
+                String v = promptText("New advisor name (current: " + m.getAdvisorName() + ") [2-120 chars] : ", 2, 120);
+                if (v != null && changeConfirmed("Advisor name", m.getAdvisorName(), v)) {
+                    m.setAdvisorName(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editStudentField(Student s, int n) {
+        if (n <= 6) return editPersonField(s, n);
+        if (n <= 12) return editAcademicField(s, n);
+        switch (n) {
+            case 13 -> {
+                String v = promptUnique("New student number (current: " + s.getStudentNumber() + ") [4-30] : ", 4, 30, "STUDENTNO");
+                if (v != null && changeConfirmed("Student number", s.getStudentNumber(), v)) {
+                    s.setStudentNumber(v);
+                    return true;
+                }
+            }
+            case 14 -> {
+                String v = promptText("New program name (current: " + s.getProgramName() + ") [2-120 chars] : ", 2, 120);
+                if (v != null && changeConfirmed("Program name", s.getProgramName(), v)) {
+                    s.setProgramName(v);
+                    return true;
+                }
+            }
+            case 15 -> {
+                LocalDate v = promptDate("New admission date (current: " + s.getAdmissionDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Admission date", s.getAdmissionDate(), v)) {
+                    s.setAdmissionDate(v);
+                    return true;
+                }
+            }
+            case 16 -> {
+                int v = promptIntRange("New study year (current: " + s.getStudyYear() + ") [1-6] : ", 1, 6);
+                if (v != CANCELLED && changeConfirmed("Study year", s.getStudyYear(), v)) {
+                    s.setStudyYear(v);
+                    return true;
+                }
+            }
+            case 17 -> {
+                String v = promptPhone("New guardian phone (current: " + s.getGuardianPhone() + ") [10-15 digits] : ");
+                if (v != null && changeConfirmed("Guardian phone", s.getGuardianPhone(), v)) {
+                    s.setGuardianPhone(v);
+                    return true;
+                }
+            }
+            case 18 -> {
+                Boolean v = promptYesNo("New scholarship (current: " + yesNo(s.isScholarshipStatus()) + "):");
+                if (v != null && changeConfirmed("Scholarship", yesNo(s.isScholarshipStatus()), yesNo(v))) {
+                    s.setScholarshipStatus(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editTeacherField(Teacher t, int n) {
+        if (n <= 6) return editPersonField(t, n);
+        if (n <= 12) return editAcademicField(t, n);
+        switch (n) {
+            case 13 -> {
+                String v = promptUnique("New employee number (current: " + t.getEmployeeNumber() + ") [4-30] : ", 4, 30, "EMPLOYEENO");
+                if (v != null && changeConfirmed("Employee number", t.getEmployeeNumber(), v)) {
+                    t.setEmployeeNumber(v);
+                    return true;
+                }
+            }
+            case 14 -> {
+                String v = promptText("New specialization (current: " + t.getSpecialization() + ") [2-120 chars] : ", 2, 120);
+                if (v != null && changeConfirmed("Specialization", t.getSpecialization(), v)) {
+                    t.setSpecialization(v);
+                    return true;
+                }
+            }
+            case 15 -> {
+                LocalDate v = promptDate("New hire date (current: " + t.getHireDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Hire date", t.getHireDate(), v)) {
+                    t.setHireDate(v);
+                    return true;
+                }
+            }
+            case 16 -> {
+                BigDecimal v = promptMoney("New salary (current: " + t.getSalary() + ") [greater than 0] : ");
+                if (v != null && changeConfirmed("Salary", t.getSalary(), v)) {
+                    t.setSalary(v);
+                    return true;
+                }
+            }
+            case 17 -> {
+                String v = promptText("New office number (current: " + t.getOfficeNumber() + ") [1-30 chars] : ", 1, 30);
+                if (v != null && changeConfirmed("Office number", t.getOfficeNumber(), v)) {
+                    t.setOfficeNumber(v);
+                    return true;
+                }
+            }
+            case 18 -> {
+                String v = promptChoice("New employment type (current: " + t.getEmploymentType() + "):",
+                        "FULL_TIME", "PART_TIME", "CONTRACT");
+                if (v != null && changeConfirmed("Employment type", t.getEmploymentType(), v)) {
+                    t.setEmploymentType(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editAdministratorField(Administrator a, int n) {
+        if (n <= 6) return editPersonField(a, n);
+        switch (n) {
+            case 7 -> {
+                String v = promptUnique("New staff number (current: " + a.getStaffNumber() + ") [4-30] : ", 4, 30, "STAFFNO");
+                if (v != null && changeConfirmed("Staff number", a.getStaffNumber(), v)) {
+                    a.setStaffNumber(v);
+                    return true;
+                }
+            }
+            case 8 -> {
+                String v = promptText("New job title (current: " + a.getJobTitle() + ") [2-60 chars] : ", 2, 60);
+                if (v != null && changeConfirmed("Job title", a.getJobTitle(), v)) {
+                    a.setJobTitle(v);
+                    return true;
+                }
+            }
+            case 9 -> {
+                String v = promptText("New assigned office (current: " + a.getAssignedOffice() + ") [1-60 chars] : ", 1, 60);
+                if (v != null && changeConfirmed("Assigned office", a.getAssignedOffice(), v)) {
+                    a.setAssignedOffice(v);
+                    return true;
+                }
+            }
+            case 10 -> {
+                LocalDate v = promptDate("New employment date (current: " + a.getEmploymentDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Employment date", a.getEmploymentDate(), v)) {
+                    a.setEmploymentDate(v);
+                    return true;
+                }
+            }
+            case 11 -> {
+                int v = promptIntRange("New access level (current: " + a.getAccessLevel() + ") [1-5] : ", 1, 5);
+                if (v != CANCELLED && changeConfirmed("Access level", a.getAccessLevel(), v)) {
+                    a.setAccessLevel(v);
+                    return true;
+                }
+            }
+            case 12 -> {
+                Boolean v = promptYesNo("New active status (current: " + yesNo(a.isActive()) + "):");
+                if (v != null && changeConfirmed("Active", yesNo(a.isActive()), yesNo(v))) {
+                    a.setActive(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editDepartmentField(Department d, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New department ID (current: " + d.getDepartmentId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Department ID", d.getDepartmentId(), v)) {
+                    d.setDepartmentId(v);
+                    return true;
+                }
+            }
+            case 2 -> {
+                String v = promptText("New department name (current: " + d.getDepartmentName() + ") [2-60 chars] : ", 2, 60);
+                if (v != null && changeConfirmed("Department name", d.getDepartmentName(), v)) {
+                    d.setDepartmentName(v);
+                    return true;
+                }
+            }
+            case 3 -> {
+                String v = promptUnique("New department code (current: " + d.getDepartmentCode() + ") [2-10 chars] : ", 2, 10, "DEPTCODE");
+                if (v != null && changeConfirmed("Department code", d.getDepartmentCode(), v)) {
+                    d.setDepartmentCode(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                String v = promptText("New office location (current: " + d.getOfficeLocation() + ") [1-60 chars] : ", 1, 60);
+                if (v != null && changeConfirmed("Office location", d.getOfficeLocation(), v)) {
+                    d.setOfficeLocation(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                String v = promptEmail("New contact email (current: " + d.getContactEmail() + ") : ");
+                if (v != null && changeConfirmed("Contact email", d.getContactEmail(), v)) {
+                    d.setContactEmail(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                return assignHeadTeacher(d);
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editCourseField(Course c, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New course ID (current: " + c.getCourseId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Course ID", c.getCourseId(), v)) {
+                    c.setCourseId(v);
+                    return true;
+                }
+            }
+            case 2 -> {
+                String v = promptUnique("New course code (current: " + c.getCourseCode() + ") [3-15 chars] : ", 3, 15, "COURSECODE");
+                if (v != null && changeConfirmed("Course code", c.getCourseCode(), v)) {
+                    c.setCourseCode(v);
+                    return true;
+                }
+            }
+            case 3 -> {
+                String v = promptText("New course title (current: " + c.getCourseTitle() + ") [2-100 chars] : ", 2, 100);
+                if (v != null && changeConfirmed("Course title", c.getCourseTitle(), v)) {
+                    c.setCourseTitle(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                int v = promptIntRange("New credit hours (current: " + c.getCreditHours() + ") [1-6] : ", 1, 6);
+                if (v != CANCELLED && changeConfirmed("Credit hours", c.getCreditHours(), v)) {
+                    c.setCreditHours(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                Department v = selectOrCreateDepartment();
+                if (v != null && changeConfirmed("Department", c.getDepartment().getDisplayName(), v.getDisplayName())) {
+                    c.setDepartment(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                Teacher v = selectOrCreateTeacher();
+                if (v != null && changeConfirmed("Assigned teacher", c.getAssignedTeacher().getDisplayName(), v.getDisplayName())) {
+                    c.setAssignedTeacher(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editClassroomField(Classroom c, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New classroom ID (current: " + c.getClassroomId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Classroom ID", c.getClassroomId(), v)) {
+                    c.setClassroomId(v);
+                    return true;
+                }
+            }
+            case 2 -> {
+                String v = promptText("New building name (current: " + c.getBuildingName() + ") [1-60 chars] : ", 1, 60);
+                if (v != null && changeConfirmed("Building name", c.getBuildingName(), v)) {
+                    c.setBuildingName(v);
+                    return true;
+                }
+            }
+            case 3 -> {
+                String v = promptText("New room number (current: " + c.getRoomNumber() + ") [1-20 chars] : ", 1, 20);
+                if (v != null && changeConfirmed("Room number", c.getRoomNumber(), v)) {
+                    c.setRoomNumber(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                int v = promptIntRange("New capacity (current: " + c.getCapacity() + ") [1-1000] : ", 1, 1000);
+                if (v != CANCELLED && changeConfirmed("Capacity", c.getCapacity(), v)) {
+                    c.setCapacity(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                int v = promptIntRange("New floor number (current: " + c.getFloorNumber() + ") [0-100] : ", 0, 100);
+                if (v != CANCELLED && changeConfirmed("Floor number", c.getFloorNumber(), v)) {
+                    c.setFloorNumber(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                Boolean v = promptYesNo("New availability (current: " + yesNo(c.isAvailable()) + "):");
+                if (v != null && changeConfirmed("Available", yesNo(c.isAvailable()), yesNo(v))) {
+                    c.setAvailable(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editEnrollmentField(Enrollment en, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New enrollment ID (current: " + en.getEnrollmentId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Enrollment ID", en.getEnrollmentId(), v)) {
+                    en.setEnrollmentId(v);
+                    return true;
+                }
+            }
+            case 2, 3 -> printLocked("the student and course are fixed once enrolled (drop and re-enroll instead).");
+            case 4 -> {
+                LocalDate v = promptDate("New enrollment date (current: " + en.getEnrollmentDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Enrollment date", en.getEnrollmentDate(), v)) {
+                    en.setEnrollmentDate(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                String v = promptChoice("New semester (current: " + en.getSemester() + "):", "FALL", "SPRING", "SUMMER");
+                if (v == null) return false;
+                try {
+                    if (en.isActive()) {
+                        checkEnrollmentNotDuplicate(en.getStudent(), en.getCourse(), v, en);
+                    }
+                } catch (DuplicateRecordException ex) {
+                    System.out.println("! " + ex.getMessage());
+                    return false;
+                }
+                if (changeConfirmed("Semester", en.getSemester(), v)) {
+                    en.setSemester(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                String v = promptChoice("New enrollment status (current: " + en.getEnrollmentStatus() + "):",
+                        "ACTIVE", "COMPLETED", "DROPPED");
+                if (v == null) return false;
+                try {
+                    if (v.equals("ACTIVE")) {
+                        checkEnrollmentNotDuplicate(en.getStudent(), en.getCourse(), en.getSemester(), en);
+                    }
+                } catch (DuplicateRecordException ex) {
+                    System.out.println("! " + ex.getMessage());
+                    return false;
+                }
+                if (changeConfirmed("Enrollment status", en.getEnrollmentStatus(), v)) {
+                    en.setEnrollmentStatus(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editAssessmentField(Assessment a, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New assessment ID (current: " + a.getAssessmentId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Assessment ID", a.getAssessmentId(), v)) {
+                    a.setAssessmentId(v);
+                    return true;
+                }
+            }
+            case 2 -> printLocked("an assessment stays linked to the enrollment it was recorded for.");
+            case 3 -> {
+                String v = promptChoice("New assessment type (current: " + a.getAssessmentType() + "):",
+                        "QUIZ", "ASSIGNMENT", "MIDTERM", "FINAL");
+                if (v != null && changeConfirmed("Assessment type", a.getAssessmentType(), v)) {
+                    a.setAssessmentType(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                // The new maximum can never be lower than the score already obtained
+                Double v = promptDouble("New maximum score (current: " + a.getMaximumScore()
+                        + ") [at least " + a.getObtainedScore() + "] : ",
+                        a.getObtainedScore(), 1000, a.getObtainedScore() > 0);
+                if (v != null && changeConfirmed("Maximum score", a.getMaximumScore(), v)) {
+                    a.setMaximumScore(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                Double v = promptDouble("New obtained score (current: " + a.getObtainedScore()
+                        + ") [0-" + a.getMaximumScore() + "] : ", 0, a.getMaximumScore(), true);
+                if (v != null && changeConfirmed("Obtained score", a.getObtainedScore(), v)) {
+                    a.setObtainedScore(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                LocalDate v = promptDate("New assessment date (current: " + a.getAssessmentDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Assessment date", a.getAssessmentDate(), v)) {
+                    a.setAssessmentDate(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editFeePaymentField(FeePayment p, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New payment ID (current: " + p.getPaymentId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Payment ID", p.getPaymentId(), v)) {
+                    p.setPaymentId(v);
+                    return true;
+                }
+            }
+            case 2 -> printLocked("a payment stays linked to the student who paid.");
+            case 3 -> {
+                BigDecimal v = promptMoney("New amount (current: " + p.getAmount() + ") [greater than 0] : ");
+                if (v != null && changeConfirmed("Amount", p.getAmount(), v)) {
+                    p.setAmount(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                LocalDate v = promptDate("New payment date (current: " + p.getPaymentDate() + ") [YYYY-MM-DD] : ", false);
+                if (v != null && changeConfirmed("Payment date", p.getPaymentDate(), v)) {
+                    p.setPaymentDate(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                String v = promptChoice("New payment method (current: " + p.getPaymentMethod() + "):",
+                        "CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD");
+                if (v != null && changeConfirmed("Payment method", p.getPaymentMethod(), v)) {
+                    p.setPaymentMethod(v);
+                    return true;
+                }
+            }
+            case 6 -> {
+                String v = promptUnique("New receipt number (current: " + p.getReceiptNumber() + ") [3-30 chars] : ", 3, 30, "RECEIPT");
+                if (v != null && changeConfirmed("Receipt number", p.getReceiptNumber(), v)) {
+                    p.setReceiptNumber(v);
+                    return true;
+                }
+            }
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editLibraryBookField(LibraryBook b, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New book ID (current: " + b.getBookId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Book ID", b.getBookId(), v)) {
+                    b.setBookId(v);
+                    return true;
+                }
+            }
+            case 2 -> {
+                String v = promptUnique("New ISBN (current: " + b.getIsbn() + ") [10-17 chars] : ", 10, 17, "ISBN");
+                if (v != null && changeConfirmed("ISBN", b.getIsbn(), v)) {
+                    b.setIsbn(v);
+                    return true;
+                }
+            }
+            case 3 -> {
+                String v = promptText("New title (current: " + b.getTitle() + ") [1-150 chars] : ", 1, 150);
+                if (v != null && changeConfirmed("Title", b.getTitle(), v)) {
+                    b.setTitle(v);
+                    return true;
+                }
+            }
+            case 4 -> {
+                String v = promptText("New author (current: " + b.getAuthor() + ") [2-100 chars] : ", 2, 100);
+                if (v != null && changeConfirmed("Author", b.getAuthor(), v)) {
+                    b.setAuthor(v);
+                    return true;
+                }
+            }
+            case 5 -> {
+                // Copies on loan keep their count; the shelf stock adjusts with the new total
+                int onLoan = b.getTotalCopies() - b.getAvailableCopies();
+                int v = promptIntRange("New total copies (current: " + b.getTotalCopies()
+                        + ", on loan: " + onLoan + ") [" + onLoan + "-1000] : ", onLoan, 1000);
+                if (v != CANCELLED && changeConfirmed("Total copies", b.getTotalCopies(), v)) {
+                    b.setTotalCopies(v);
+                    b.setAvailableCopies(v - onLoan);
+                    return true;
+                }
+            }
+            case 6 -> printLocked("available copies change only through Borrow and Return.");
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
+    }
+
+    private static boolean editBookLoanField(BookLoan loan, int n) {
+        switch (n) {
+            case 1 -> {
+                String v = promptUnique("New loan ID (current: " + loan.getLoanId() + ") [4-30 chars] : ", 4, 30, "ID");
+                if (v != null && changeConfirmed("Loan ID", loan.getLoanId(), v)) {
+                    loan.setLoanId(v);
+                    return true;
+                }
+            }
+            case 2, 3, 4 -> printLocked("the student, book and borrowed date are fixed for a loan.");
+            case 5 -> {
+                LocalDate v = promptDueDate("New due date (current: " + loan.getDueDate()
+                        + ") [YYYY-MM-DD | after " + loan.getBorrowedDate() + "] : ", loan.getBorrowedDate());
+                if (v != null && changeConfirmed("Due date", loan.getDueDate(), v)) {
+                    loan.setDueDate(v);
+                    return true;
+                }
+            }
+            case 6 -> printLocked("use menu option 12 (Return Library Book) so the stock stays correct.");
+            default -> System.out.println("! Invalid field number.");
+        }
+        return false;
     }
 
     // =====================================================
