@@ -8,6 +8,7 @@ import com.auca.classroom.Classroom;
 import com.auca.course.Course;
 import com.auca.department.Department;
 import com.auca.enrollment.Enrollment;
+import com.auca.exceptions.BookUnavailableException;
 import com.auca.exceptions.DuplicateRecordException;
 import com.auca.exceptions.ValidationException;
 import com.auca.feepayment.FeePayment;
@@ -72,7 +73,17 @@ public class Main {
                     case 7 -> registerEnrollmentForm();
                     case 13 -> viewAllRecords();
                     case 19 -> demonstratePolymorphism();
-                    case 4, 6, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18 ->
+                    case 4 -> registerAdministratorForm();
+                    case 6 -> registerClassroomForm();
+                    case 8 -> registerAssessmentForm();
+                    case 9 -> registerFeePaymentForm();
+                    case 10 -> registerLibraryBookForm();
+                    case 11 -> borrowBookForm();
+                    case 12 -> returnBookForm();
+                    case 16 -> showStudentAcademicSummary();
+                    case 17 -> showPaymentHistory();
+                    case 18 -> showAvailableBooks();
+                    case 14, 15 ->
                         System.out.println("This option is built in the next phase.");
                     case 0 -> System.out.println("Exiting AUCA_ID. Goodbye!");
                     default -> System.out.println("! Invalid option. Choose 0-19.");
@@ -425,6 +436,461 @@ public class Main {
     }
 
     // =====================================================
+    // FORM BANNER (used by the forms added in this phase)
+    // =====================================================
+    private static void printBanner(String title) {
+        System.out.println("\n+------------------------------------------------------------+");
+        System.out.println("| AUCA_ID / SCHOOL MANAGEMENT");
+        System.out.println("| " + title);
+        System.out.println("| Type CANCEL at any prompt to discard the unsaved record.");
+        System.out.println("+------------------------------------------------------------+");
+    }
+
+    // =====================================================
+    // SMART FORM: ADMINISTRATOR (no prerequisites)
+    // =====================================================
+    private static Administrator registerAdministratorForm() {
+        printBanner("ADMINISTRATOR REGISTRATION");
+
+        System.out.println("\n[STEP 1/3] PERSONAL DETAILS");
+        String personId = promptUnique("01 Person ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (personId == null) return null;
+        String firstName = promptText("02 First name [String | 2-60 chars] : ", 2, 60);
+        if (firstName == null) return null;
+        String lastName = promptText("03 Last name [String | 2-60 chars] : ", 2, 60);
+        if (lastName == null) return null;
+        String email = promptUniqueEmail("04 Email [String | unique | email] : ", "EMAIL");
+        if (email == null) return null;
+        String phone = promptPhone("05 Phone [String | 10-15 digits] : ");
+        if (phone == null) return null;
+        LocalDate dob = promptDate("06 Date of birth [LocalDate | YYYY-MM-DD] : ", true);
+        if (dob == null) return null;
+
+        System.out.println("\n[STEP 2/3] ADMINISTRATOR DETAILS");
+        String staffNumber = promptUnique("07 Staff number [String | unique | 4-30] : ", 4, 30, "STAFFNO");
+        if (staffNumber == null) return null;
+        String jobTitle = promptText("08 Job title [String | 2-60 chars] : ", 2, 60);
+        if (jobTitle == null) return null;
+        String office = promptText("09 Assigned office [String | 1-60 chars] : ", 1, 60);
+        if (office == null) return null;
+        LocalDate employmentDate = promptDate("10 Employment date [LocalDate | YYYY-MM-DD] : ", false);
+        if (employmentDate == null) return null;
+        int accessLevel = promptIntRange("11 Access level [int | 1-5] : ", 1, 5);
+        if (accessLevel == CANCELLED) return null;
+        Boolean active = promptYesNo("12 Active:");
+        if (active == null) return null;
+
+        Administrator admin = new Administrator(personId, firstName, lastName, email, phone, dob,
+                staffNumber, jobTitle, office, employmentDate, accessLevel, active);
+
+        System.out.println("\n[STEP 3/3] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW ADMINISTRATOR", admin)) {
+            System.out.println("Cancelled. Nothing was saved.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", personId);
+            checkUnique("STAFFNO", staffNumber);
+            admin.validate();
+            administrators.add(admin);
+            System.out.println("+ Administrator " + admin.getStaffNumber() + " registered successfully.");
+            return admin;
+        } catch (ValidationException | DuplicateRecordException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // SMART FORM: CLASSROOM (no prerequisites)
+    // =====================================================
+    private static Classroom registerClassroomForm() {
+        printBanner("CLASSROOM REGISTRATION");
+
+        System.out.println("\n[STEP 1/2] CLASSROOM DETAILS");
+        String id = promptUnique("01 Classroom ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (id == null) return null;
+        String building = promptText("02 Building name [String | 1-60 chars] : ", 1, 60);
+        if (building == null) return null;
+        String room = promptText("03 Room number [String | 1-20 chars] : ", 1, 20);
+        if (room == null) return null;
+        int capacity = promptIntRange("04 Capacity [int | 1-1000] : ", 1, 1000);
+        if (capacity == CANCELLED) return null;
+        int floor = promptIntRange("05 Floor number [int | 0-100] : ", 0, 100);
+        if (floor == CANCELLED) return null;
+        Boolean available = promptYesNo("06 Available:");
+        if (available == null) return null;
+
+        Classroom classroom = new Classroom(id, building, room, capacity, floor, available);
+
+        System.out.println("\n[STEP 2/2] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW CLASSROOM", classroom)) {
+            System.out.println("Cancelled. Nothing was saved.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", id);
+            classroom.validate();
+            classrooms.add(classroom);
+            System.out.println("+ Classroom " + classroom.getId() + " registered successfully.");
+            return classroom;
+        } catch (ValidationException | DuplicateRecordException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // SMART FORM: LIBRARY BOOK (no prerequisites)
+    // =====================================================
+    private static LibraryBook registerLibraryBookForm() {
+        printBanner("LIBRARY BOOK REGISTRATION");
+
+        System.out.println("\n[STEP 1/2] BOOK DETAILS");
+        String id = promptUnique("01 Book ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (id == null) return null;
+        String isbn = promptUnique("02 ISBN [String | unique | 10-17 chars] : ", 10, 17, "ISBN");
+        if (isbn == null) return null;
+        String title = promptText("03 Title [String | 1-150 chars] : ", 1, 150);
+        if (title == null) return null;
+        String author = promptText("04 Author [String | 2-100 chars] : ", 2, 100);
+        if (author == null) return null;
+        int total = promptIntRange("05 Total copies [int | 0-1000] : ", 0, 1000);
+        if (total == CANCELLED) return null;
+        // availableCopies can never be more than totalCopies
+        int available = promptIntRange("06 Available copies [int | 0-" + total + "] : ", 0, total);
+        if (available == CANCELLED) return null;
+
+        LibraryBook book = new LibraryBook(id, isbn, title, author, total, available);
+
+        System.out.println("\n[STEP 2/2] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW LIBRARY BOOK", book)) {
+            System.out.println("Cancelled. Nothing was saved.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", id);
+            checkUnique("ISBN", isbn);
+            book.validate();
+            books.add(book);
+            System.out.println("+ Book " + book.getId() + " registered successfully.");
+            return book;
+        } catch (ValidationException | DuplicateRecordException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // SMART FORM: ASSESSMENT (needs an ACTIVE Enrollment)
+    // =====================================================
+    private static Assessment registerAssessmentForm() {
+        printBanner("RECORD ASSESSMENT (needs an ACTIVE enrollment)");
+
+        System.out.println("\n[STEP 1/3] SELECT RELATED RECORD");
+        Enrollment enrollment = selectOrCreateActiveEnrollment();
+        if (enrollment == null) {
+            System.out.println("Assessment cancelled.");
+            return null;
+        }
+
+        System.out.println("\n[STEP 2/3] ASSESSMENT DETAILS");
+        String id = promptUnique("01 Assessment ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (id == null) return null;
+        System.out.println("02 Enrollment : " + enrollment.getDisplayName());
+        String type = promptChoice("03 Assessment type:", "QUIZ", "ASSIGNMENT", "MIDTERM", "FINAL");
+        if (type == null) return null;
+        Double maximum = promptDouble("04 Maximum score [double | greater than 0] : ", 0, 1000, false);
+        if (maximum == null) return null;
+        Double obtained = promptDouble("05 Obtained score [double | 0-" + maximum + "] : ", 0, maximum, true);
+        if (obtained == null) return null;
+        LocalDate date = promptDate("06 Assessment date [LocalDate | YYYY-MM-DD] : ", false);
+        if (date == null) return null;
+
+        Assessment assessment = new Assessment(id, enrollment, type, maximum, obtained, date);
+
+        System.out.println("\n[STEP 3/3] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW ASSESSMENT", assessment)) {
+            System.out.println("Cancelled. Nothing was saved.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", id);
+            assessment.validate();   // also rejects a non-ACTIVE enrollment
+            assessments.add(assessment);
+            System.out.println("+ Assessment " + assessment.getId() + " recorded successfully.");
+            return assessment;
+        } catch (ValidationException | DuplicateRecordException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // SMART FORM: FEE PAYMENT (needs a Student)
+    // =====================================================
+    private static FeePayment registerFeePaymentForm() {
+        printBanner("RECORD FEE PAYMENT (needs a Student)");
+
+        System.out.println("\n[STEP 1/3] SELECT RELATED RECORD");
+        Student student = selectOrCreateStudent();
+        if (student == null) {
+            System.out.println("Payment cancelled.");
+            return null;
+        }
+
+        System.out.println("\n[STEP 2/3] PAYMENT DETAILS");
+        String id = promptUnique("01 Payment ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (id == null) return null;
+        System.out.println("02 Student : " + student.getDisplayName());
+        BigDecimal amount = promptMoney("03 Amount [BigDecimal | greater than 0] : ");
+        if (amount == null) return null;
+        LocalDate date = promptDate("04 Payment date [LocalDate | YYYY-MM-DD] : ", false);
+        if (date == null) return null;
+        String method = promptChoice("05 Payment method:", "CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD");
+        if (method == null) return null;
+        String receipt = promptUnique("06 Receipt number [String | unique | 3-30 chars] : ", 3, 30, "RECEIPT");
+        if (receipt == null) return null;
+
+        FeePayment payment = new FeePayment(id, student, amount, date, method, receipt);
+
+        System.out.println("\n[STEP 3/3] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW FEE PAYMENT", payment)) {
+            System.out.println("Cancelled. Nothing was saved.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", id);
+            checkUnique("RECEIPT", receipt);
+            payment.validate();
+            payments.add(payment);
+            System.out.println("+ Payment " + payment.getId() + " recorded. Receipt: " + receipt);
+            return payment;
+        } catch (ValidationException | DuplicateRecordException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // BORROW A BOOK (creates a BookLoan, stock goes DOWN exactly once)
+    // =====================================================
+    private static BookLoan borrowBookForm() {
+        printBanner("BORROW LIBRARY BOOK (needs a Student and a Library Book)");
+
+        System.out.println("\n[STEP 1/3] SELECT RELATED RECORDS");
+        Student student = selectOrCreateStudent();
+        if (student == null) {
+            System.out.println("Borrowing cancelled.");
+            return null;
+        }
+
+        // Keep asking until the chosen book has a copy available (or the user cancels)
+        LibraryBook book = null;
+        while (book == null) {
+            LibraryBook chosen = selectOrCreateBook();
+            if (chosen == null) {
+                System.out.println("Borrowing cancelled.");
+                return null;
+            }
+            try {
+                checkBookAvailable(chosen);
+                book = chosen;
+            } catch (BookUnavailableException e) {
+                System.out.println("! " + e.getMessage() + " Please choose another book.");
+            }
+        }
+
+        System.out.println("\n[STEP 2/3] LOAN DETAILS");
+        String id = promptUnique("01 Loan ID [String | unique | 4-30 chars] : ", 4, 30, "ID");
+        if (id == null) return null;
+        System.out.println("02 Student : " + student.getDisplayName());
+        System.out.println("03 Book : " + book.getDisplayName()
+                + " (available: " + book.getAvailableCopies() + ")");
+        LocalDate borrowed = promptDate("04 Borrowed date [LocalDate | YYYY-MM-DD] : ", false);
+        if (borrowed == null) return null;
+        LocalDate due = promptDueDate("05 Due date [LocalDate | YYYY-MM-DD | after borrowed date] : ", borrowed);
+        if (due == null) return null;
+        System.out.println("06 Returned date : (empty until the book is returned)");
+
+        BookLoan loan = new BookLoan(id, student, book, borrowed, due, null);
+
+        System.out.println("\n[STEP 3/3] REVIEW & CONFIRM");
+        if (!confirmSave("REVIEW BOOK LOAN", loan)) {
+            System.out.println("Cancelled. Nothing was saved and stock is unchanged.");
+            return null;
+        }
+
+        try {
+            checkUnique("ID", id);
+            checkBookAvailable(book);   // check again right before changing stock
+            loan.validate();
+            loans.add(loan);
+            book.setAvailableCopies(book.getAvailableCopies() - 1);   // exactly once
+            System.out.println("+ Loan " + loan.getId() + " created. Copies left for \""
+                    + book.getTitle() + "\": " + book.getAvailableCopies());
+            return loan;
+        } catch (ValidationException | DuplicateRecordException | BookUnavailableException e) {
+            System.out.println("! Could not save: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // =====================================================
+    // RETURN A BOOK (updates the EXISTING loan, stock goes UP exactly once)
+    // =====================================================
+    private static void returnBookForm() {
+        printBanner("RETURN LIBRARY BOOK");
+
+        List<BookLoan> openLoans = activeLoans();
+        if (openLoans.isEmpty()) {
+            System.out.println("No active loan exists. Borrow a book first (menu option 11).");
+            return;
+        }
+
+        int pick = pickExisting("Active Loan", openLoans);
+        if (pick == CANCELLED) {
+            System.out.println("Return cancelled. Nothing changed.");
+            return;
+        }
+        BookLoan loan = openLoans.get(pick);
+
+        LocalDate returnDate = promptReturnDate("Return date [LocalDate | YYYY-MM-DD] : ",
+                loan.getBorrowedDate());
+        if (returnDate == null) {
+            System.out.println("Return cancelled. Nothing changed.");
+            return;
+        }
+
+        if (!confirmAction("Return \"" + loan.getBook().getTitle() + "\" for "
+                + loan.getStudent().getDisplayName() + " on " + returnDate + "?")) {
+            System.out.println("Return cancelled. Nothing changed.");
+            return;
+        }
+
+        LibraryBook book = loan.getBook();
+        loan.setReturnedDate(returnDate);
+        try {
+            loan.validate();
+            if (book.getAvailableCopies() >= book.getTotalCopies()) {
+                throw new ValidationException("All copies are already in the library; stock cannot go up.");
+            }
+            book.setAvailableCopies(book.getAvailableCopies() + 1);   // exactly once
+            System.out.println("+ Book returned. Copies now available for \"" + book.getTitle()
+                    + "\": " + book.getAvailableCopies());
+        } catch (ValidationException e) {
+            loan.setReturnedDate(null);   // undo, so nothing is half-changed
+            System.out.println("! Could not return the book: " + e.getMessage());
+        }
+    }
+
+    private static void checkBookAvailable(LibraryBook book) throws BookUnavailableException {
+        if (book.getAvailableCopies() <= 0) {
+            throw new BookUnavailableException("No copy of \"" + book.getTitle() + "\" is available right now.");
+        }
+    }
+
+    private static List<BookLoan> activeLoans() {
+        List<BookLoan> open = new ArrayList<>();
+        for (BookLoan loan : loans) {
+            if (loan.isActive()) open.add(loan);
+        }
+        return open;
+    }
+
+    private static List<Enrollment> activeEnrollments() {
+        List<Enrollment> active = new ArrayList<>();
+        for (Enrollment e : enrollments) {
+            if (e.isActive()) active.add(e);
+        }
+        return active;
+    }
+
+    // =====================================================
+    // REPORTS: menu options 16, 17, 18
+    // =====================================================
+    private static void showStudentAcademicSummary() {
+        System.out.println("\n--- STUDENT ACADEMIC SUMMARY ---");
+        Student student = selectExistingStudent();
+        if (student == null) return;
+
+        System.out.println("\n" + student.getRegistrationSummary());
+        System.out.println("Advisor: " + student.getAdvisorName()
+                + " | Scholarship: " + (student.isScholarshipStatus() ? "YES" : "NO"));
+        System.out.println("\nEnrollments:");
+
+        int count = 0;
+        for (Enrollment e : enrollments) {
+            if (e.getStudent() != student) continue;
+            count++;
+            System.out.println("  " + e.getRegistrationSummary());
+
+            double obtained = 0;
+            double maximum = 0;
+            int assessmentCount = 0;
+            for (Assessment a : assessments) {
+                if (a.getEnrollment() == e) {
+                    assessmentCount++;
+                    obtained += a.getObtainedScore();
+                    maximum += a.getMaximumScore();
+                    System.out.println("      - " + a.getAssessmentType() + ": "
+                            + a.getObtainedScore() + "/" + a.getMaximumScore());
+                }
+            }
+            if (assessmentCount == 0) {
+                System.out.println("      (no assessments yet)");
+            } else {
+                System.out.println("      Total: " + obtained + "/" + maximum + " = "
+                        + String.format("%.1f", obtained / maximum * 100) + "%");
+            }
+        }
+        if (count == 0) {
+            System.out.println("  (this student has no enrollments yet)");
+        }
+    }
+
+    private static void showPaymentHistory() {
+        System.out.println("\n--- STUDENT PAYMENT HISTORY ---");
+        Student student = selectExistingStudent();
+        if (student == null) return;
+
+        System.out.println("\nPayments for " + student.getDisplayName() + ":");
+        BigDecimal total = BigDecimal.ZERO;
+        int count = 0;
+        for (FeePayment p : payments) {
+            if (p.getStudent() == student) {
+                p.printDetails();
+                total = total.add(p.getAmount());   // BigDecimal needs add(), not +
+                count++;
+            }
+        }
+        if (count == 0) {
+            System.out.println("  (no payments recorded for this student)");
+        } else {
+            System.out.println("Total paid: " + total + " across " + count + " payment(s).");
+        }
+    }
+
+    private static void showAvailableBooks() {
+        System.out.println("\n--- AVAILABLE BOOKS ---");
+        int count = 0;
+        for (LibraryBook b : books) {
+            if (b.getAvailableCopies() > 0) {
+                b.printDetails();
+                count++;
+            }
+        }
+        if (count == 0) {
+            System.out.println("  (no books are available right now)");
+        }
+    }
+
+    // =====================================================
     // NESTED PREREQUISITE SELECTORS (Section 6 and 16.4)
     // Each one: show a numbered list, or register a new record,
     // then return the REAL object (never the menu number).
@@ -493,13 +959,84 @@ public class Main {
         }
     }
 
+    private static LibraryBook selectOrCreateBook() {
+        while (true) {
+            int pick = pickIndex("Library Book", books);
+            if (pick == CANCELLED) return null;
+            if (pick == REGISTER_NEW) {
+                LibraryBook created = registerLibraryBookForm();
+                if (created != null) {
+                    System.out.println("Returning to the previous form with your entries intact...");
+                    return created;
+                }
+            } else {
+                return books.get(pick);
+            }
+        }
+    }
+
+    // Only ACTIVE enrollments can be assessed (Section 6)
+    private static Enrollment selectOrCreateActiveEnrollment() {
+        while (true) {
+            List<Enrollment> active = activeEnrollments();
+            if (active.isEmpty()) {
+                System.out.println("No ACTIVE enrollment exists. Enroll a student before recording an assessment.");
+            }
+            int pick = pickIndex("Enrollment", active);
+            if (pick == CANCELLED) return null;
+            if (pick == REGISTER_NEW) {
+                Enrollment created = registerEnrollmentForm();
+                if (created != null) {
+                    if (created.isActive()) {
+                        System.out.println("Returning to the previous form with your entries intact...");
+                        return created;
+                    }
+                    System.out.println("! That enrollment is not ACTIVE, so it cannot be assessed.");
+                }
+            } else {
+                return active.get(pick);
+            }
+        }
+    }
+
+    // A list with NO "register new" option (used for reports and for returning books)
+    private static int pickExisting(String label, List<?> list) {
+        while (true) {
+            System.out.println("\n+------------ CHOOSE " + label.toUpperCase() + " ------------+");
+            for (int i = 0; i < list.size(); i++) {
+                System.out.println("  " + (i + 1) + ". " + list.get(i));
+            }
+            System.out.println("  0. Cancel");
+            System.out.print("Select option: ");
+
+            try {
+                int number = Integer.parseInt(scanner.nextLine().trim());
+                if (number == 0) return CANCELLED;
+                if (number >= 1 && number <= list.size()) return number - 1;
+                System.out.println("! Choose a number between 0 and " + list.size() + ".");
+            } catch (NumberFormatException e) {
+                System.out.println("! Please enter a valid number.");
+            }
+        }
+    }
+
+    private static Student selectExistingStudent() {
+        if (students.isEmpty()) {
+            System.out.println("No student exists. Register a student first (menu option 2).");
+            return null;
+        }
+        int pick = pickExisting("Student", students);
+        if (pick == CANCELLED) return null;
+        return students.get(pick);
+    }
+
     // List<?> means "a list of anything". We only print each item (toString).
     // Returns: index in the list, REGISTER_NEW, or CANCELLED.
     private static int pickIndex(String label, List<?> list) {
         while (true) {
             System.out.println("\n+------------ CHOOSE " + label.toUpperCase() + " ------------+");
             if (list.isEmpty()) {
-                System.out.println("No " + label + " exists. Register a " + label + " first.");
+                System.out.println("No " + label + " exists yet. Use the [+] option to register one, or 0 to cancel.");
             }
             for (int i = 0; i < list.size(); i++) {
                 System.out.println("  " + (i + 1) + ". " + list.get(i));
@@ -650,6 +1187,21 @@ public class Main {
                     if (t.getInstitutionalEmail().equalsIgnoreCase(value)) taken = true;
                 }
             }
+            case "STAFFNO" -> {
+                for (Administrator a : administrators) {
+                    if (a.getStaffNumber().equalsIgnoreCase(value)) taken = true;
+                }
+            }
+            case "ISBN" -> {
+                for (LibraryBook b : books) {
+                    if (b.getIsbn().equalsIgnoreCase(value)) taken = true;
+                }
+            }
+            case "RECEIPT" -> {
+                for (FeePayment p : payments) {
+                    if (p.getReceiptNumber().equalsIgnoreCase(value)) taken = true;
+                }
+            }
             default -> { }
         }
 
@@ -798,6 +1350,71 @@ public class Main {
             } catch (NumberFormatException e) {
                 System.out.println("! Error: enter a valid amount (example: 450000.50).");
             }
+        }
+    }
+
+    // A decimal number between min and max. minInclusive=false means "greater than min".
+    private static Double promptDouble(String prompt, double min, double max, boolean minInclusive) {
+        while (true) {
+            String input = promptText(prompt, 1, 20);
+            if (input == null) return null;
+            try {
+                double value = Double.parseDouble(input);
+                boolean aboveMin = minInclusive ? value >= min : value > min;
+                if (aboveMin && value <= max) return value;
+                String lower = minInclusive ? "at least " : "greater than ";
+                System.out.println("! Error: value must be " + lower + min + " and at most " + max + ".");
+            } catch (NumberFormatException e) {
+                System.out.println("! Error: enter a valid number (example: 17.5).");
+            }
+        }
+    }
+
+    // Due date: any valid date, but it must come AFTER the borrowed date
+    private static LocalDate promptDueDate(String prompt, LocalDate borrowed) {
+        while (true) {
+            String input = promptText(prompt, 1, 20);
+            if (input == null) return null;
+            try {
+                LocalDate due = LocalDate.parse(input);
+                if (due.isAfter(borrowed)) return due;
+                System.out.println("! Error: due date must be after the borrowed date (" + borrowed + ").");
+            } catch (DateTimeParseException e) {
+                System.out.println("! Invalid date: use YYYY-MM-DD (example: 2026-12-01).");
+            }
+        }
+    }
+
+    // Return date: not in the future and never before the borrowed date
+    private static LocalDate promptReturnDate(String prompt, LocalDate borrowed) {
+        while (true) {
+            String input = promptText(prompt, 1, 20);
+            if (input == null) return null;
+            try {
+                LocalDate returned = LocalDate.parse(input);
+                if (returned.isBefore(borrowed)) {
+                    System.out.println("! Error: return date cannot be before the borrowed date (" + borrowed + ").");
+                } else if (returned.isAfter(LocalDate.now())) {
+                    System.out.println("! Error: return date cannot be in the future.");
+                } else {
+                    return returned;
+                }
+            } catch (DateTimeParseException e) {
+                System.out.println("! Invalid date: use YYYY-MM-DD (example: 2026-11-20).");
+            }
+        }
+    }
+
+    // Explicit confirmation before an important change
+    private static boolean confirmAction(String message) {
+        System.out.println(message);
+        while (true) {
+            System.out.println("[1] Confirm   [0] Cancel");
+            System.out.print("Select option: ");
+            String input = scanner.nextLine().trim();
+            if (input.equals("1")) return true;
+            if (input.equals("0") || input.equalsIgnoreCase("CANCEL")) return false;
+            System.out.println("! Enter 1 to confirm or 0 to cancel.");
         }
     }
 
