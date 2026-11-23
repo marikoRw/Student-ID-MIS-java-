@@ -1,1 +1,1 @@
-# AUCA_ID School Management System
+# School Management System
